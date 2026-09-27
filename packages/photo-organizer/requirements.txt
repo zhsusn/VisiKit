@@ -5,6 +5,10 @@ exifread>=3.0.0
 pymediainfo>=6.0.0
 tqdm>=4.66.0
 
+# Optional HEIC support: if missing or initialization fails,
+# HEIC files skip perceptual hashing and still use exact hashing.
+pillow-heif>=0.13.0
+
 # GUI (optional)
 ttkbootstrap>=1.10.0
 
