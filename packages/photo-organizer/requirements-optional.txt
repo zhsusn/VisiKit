@@ -1,6 +1,3 @@
-# Optional HEIC/HEIF support for perceptual hashing.
-# Install manually:
-#   pip install -r requirements-optional.txt
-# If installation or initialization fails, the app degrades gracefully
-# (HEIC files keep exact hashing; perceptual hashing is skipped).
+# Optional HEIC perceptual hashing support
+# Install from this directory: pip install -r requirements-optional.txt
 pillow-heif>=0.13.0
