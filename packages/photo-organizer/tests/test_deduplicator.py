@@ -578,3 +578,25 @@ class TestStep4KeywordAlignment:
         PhotoOrganizer(output_dir=out_dir)._generate_detail_report(
             OrganizeResult(success=[], skipped=[], failed=[]))
         assert "HEIC解码失败" not in (out_dir / "整理明细.md").read_text(encoding="utf-8")
+
+
+# ── 步骤 5 完成标准机械对齐（-k heic_fail_no_single_notice 真实可跑）─────────
+
+class TestStep5KeywordAlignment:
+    """步骤 5（屏蔽单文件实时失败提示）的选择器对齐用例。"""
+
+    def test_heic_fail_no_single_notice_during_scan(self, tmp_path, monkeypatch, capsys):
+        """步骤5：单张 HEIC 解码失败无实时提示——含失败文件名的行不得含「失败」字样。
+
+        坏 HEIC 会进入正常去重结果列表（业务输出），故按行断言而非全量文本。
+        """
+        _mock_heif_init(monkeypatch)
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "only.heic").write_bytes(b"bad")
+        _run_dedup_command(src)
+        captured = capsys.readouterr()
+        for line in (captured.out + captured.err).splitlines():
+            if "only.heic" in line:
+                assert "失败" not in line, f"出现单文件实时失败提示: {line}"
+        assert "HEIC解码失败: 1" in captured.out  # 仅最终汇总按规则展示
