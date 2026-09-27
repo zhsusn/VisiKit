@@ -600,3 +600,27 @@ class TestStep5KeywordAlignment:
             if "only.heic" in line:
                 assert "失败" not in line, f"出现单文件实时失败提示: {line}"
         assert "HEIC解码失败: 1" in captured.out  # 仅最终汇总按规则展示
+
+
+# ── 步骤 1 完成标准机械对齐（-k heif_init_fail 真实可跑）─────────────────────
+# plan.md 步骤1完成标准按 `pytest -k "heif_init_fail"` 选测试；存量用例位于
+# CamelCase 类 TestHeifInitFail 下，pytest -k 逐字子串匹配（含下划线）不命中。
+# 本用例名内嵌关键字使命中数 ≥1，断言覆盖步骤1完成标准语义：
+# 初始化失败时 HEIC pHash 返回 None、精确哈希正常、扫描不中断（发布链收尾任务，只增不改）。
+
+class TestStep1KeywordAlignment:
+    """步骤 1（HEIF 初始化容错降级）完成标准选择器的机械对齐用例。"""
+
+    def test_heif_init_fail_degrade_exact_hash_only(self, monkeypatch):
+        mock_heif = type('MockPillowHeif', (), {
+            'register_heif_opener': lambda: (_ for _ in ()).throw(RuntimeError("init fail"))
+        })
+        monkeypatch.setattr(dedup_mod, "pillow_heif", mock_heif)
+        dedup_mod.initialize_heif()
+        assert dedup_mod.heif_degraded is True
+        with NamedTemporaryFile(suffix=".heic", delete=False) as f:
+            heic_path = Path(f.name)
+        dedup = Deduplicator()
+        assert dedup.compute_image_hash(heic_path) is None      # 感知哈希降级返回 None
+        assert dedup.compute_file_hash(heic_path) is not None   # 精确哈希正常，扫描不中断
+        heic_path.unlink()
