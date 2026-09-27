@@ -155,9 +155,24 @@
 - TestRealHeic.test_real_heic_decode_success：依赖真实 pillow-heif，环境未安装 → pytest.importorskip 自动 skip，不计失败。
 - TestHeicFullScanRecalc.test_two_scans_full_recalc：依赖真实编解码 → 同上 skip。
 - TestHeicDecodeFailCounter.test_mixed_success_and_fail_count：成功 HEIC 需真实解码 → 缺依赖时 skip。
+- TestStepKeywordAlignment.test_heic_decode_fail_count_mixed_scan（步骤2 测试点7）：同上 skip。
+- TestStep3KeywordAlignment.test_heic_full_scan_recalc_no_reuse（步骤3）：同上 skip。
+- TestStep4KeywordAlignment.test_heic_fail_report_render_all_success_hidden（步骤4 测试点12子场景）：同上 skip。
 - 上述 skip 均为「环境缺可选依赖」而非用例失败；安装 pillow-heif（pip install -r requirements-optional.txt）后重跑即可获得真实编解码覆盖。
+
+### 步骤 2~6 完成标准验收记录（-k 选择器对齐）
+
+plan.md 各步骤完成标准按 `pytest -k <关键字>` 选测试；pytest -k 为逐字子串匹配（含下划线），CamelCase 类名不命中，故步骤 2~5 各以名字内嵌关键字的用例落机械验收口径（用例只增不改）：
+
+| 步骤 | 选择器 | 命中 | 说明 |
+|------|--------|------|------|
+| 2 | `-k heic_decode_fail_count` | 3 | 计数规则（测试点6/9/15）+ 混合扫描（测试点7，缺依赖 skip） |
+| 3 | `-k heic_full_scan_recalc` | 1 | 两次扫描重算 + 无持久化落盘断言 |
+| 4 | `-k heic_fail_report_render` | 2 | 双载体 0 隐藏/>0 显示（测试点11/12，端到端：dedup 扫描置数 → 同进程整理明细继承） |
+| 5 | `-k heic_fail_no_single_notice` | 1 | 无单文件实时失败提示（按行断言） |
+| 6 | 全量 + 本记录 | - | 四类固定场景表 + skip 区分记录可查 |
 
 ### 本轮全量结果
 
-pytest tests/（包根执行，PYTHONPATH=src）：26 passed, 3 skipped（2026-09-27 实测）。
-- 3 个 skip 全部为环境缺 pillow-heif 的 importorskip 用例（TestRealHeic / TestHeicFullScanRecalc / 混合场景），与上方区分记录一致。
+pytest tests/（包根执行，PYTHONPATH=src）：**29 passed, 6 skipped**（2026-09-27 实测，步骤 2~5 关键字对齐用例并入后）。
+- 6 个 skip 全部为环境缺 pillow-heif 的 importorskip 用例（TestRealHeic / TestHeicFullScanRecalc / 混合场景×3 / 全成功子场景），与上方区分记录一致。
