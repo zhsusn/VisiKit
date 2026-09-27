@@ -517,3 +517,64 @@ class TestStep3KeywordAlignment:
         leftovers = [p.name for p in tmp_path.rglob("*")
                      if p.is_file() and p != heic_path]
         assert leftovers == []
+
+
+# ── 步骤 4 完成标准机械对齐（-k heic_fail_report_render 真实可跑）────────────
+
+class TestStep4KeywordAlignment:
+    """步骤 4（重复报告失败计数标注）的选择器对齐用例。
+
+    端到端链路：dedup 扫描（计数器经真实扫描置数，类变量）→ 同进程整理流程
+    _generate_detail_report 读取同一类变量渲染明细——不 monkeypatch 计数器。
+    """
+
+    def test_heic_fail_report_render_zero_hidden_positive_shown(self, tmp_path, monkeypatch, capsys):
+        """步骤4（测试点11/12）：双载体（CLI 终端汇总 + 整理明细.md）计数 >0 显示且数值
+        与扫描计数器一致 / =0（无 HEIC）双载体均无标注。"""
+        _mock_heif_init(monkeypatch)
+        # >0：dedup 扫描坏 HEIC → CLI 汇总显示 → 同进程整理明细继承同一计数器
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "bad.heic").write_bytes(b"bad")
+        _run_dedup_command(src)
+        out = capsys.readouterr().out
+        assert "HEIC解码失败: 1" in out
+        assert Deduplicator.heic_decode_fail_count == 1
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        PhotoOrganizer(output_dir=out_dir)._generate_detail_report(
+            OrganizeResult(success=[], skipped=[], failed=[]))
+        text = (out_dir / "整理明细.md").read_text(encoding="utf-8")
+        assert "HEIC解码失败: 1" in text      # 数值与扫描计数器一致（端到端传递）
+        # =0（无 HEIC 文件）：dedup 汇总与整理明细双载体均无 HEIC 解码失败标注
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        Image.new('RGB', (10, 10), color='red').save(plain / "a.jpg", format="JPEG")
+        _run_dedup_command(plain)
+        captured = capsys.readouterr()
+        assert "HEIC解码失败" not in captured.out
+        assert Deduplicator.heic_decode_fail_count == 0
+        out_dir2 = tmp_path / "out2"
+        out_dir2.mkdir()
+        PhotoOrganizer(output_dir=out_dir2)._generate_detail_report(
+            OrganizeResult(success=[], skipped=[], failed=[]))
+        assert "HEIC解码失败" not in (out_dir2 / "整理明细.md").read_text(encoding="utf-8")
+
+    def test_heic_fail_report_render_all_success_hidden(self, tmp_path, monkeypatch, capsys):
+        """步骤4（测试点12 子场景）：存在 HEIC 但全部解码成功——计数=0，双载体无标注。"""
+        pytest.importorskip("pillow_heif")  # 成功 HEIC 需真实编解码；缺依赖 skip 并在 TEST_REPORT.md 区分记录
+        dedup_mod._heif_initialized = False
+        dedup_mod.initialize_heif()
+        src = tmp_path / "src"
+        src.mkdir()
+        img = Image.new('RGB', (40, 40), color='cyan')
+        img.save(src / "ok.heic", format="HEIF")
+        _run_dedup_command(src)
+        captured = capsys.readouterr()
+        assert "HEIC解码失败" not in captured.out
+        assert Deduplicator.heic_decode_fail_count == 0
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        PhotoOrganizer(output_dir=out_dir)._generate_detail_report(
+            OrganizeResult(success=[], skipped=[], failed=[]))
+        assert "HEIC解码失败" not in (out_dir / "整理明细.md").read_text(encoding="utf-8")
