@@ -449,6 +449,16 @@ class TestStepKeywordAlignment:
         bad_heic2.write_bytes(b"bad")
         assert dedup.compute_image_hash(bad_heic2) is None
         assert dedup.heic_decode_fail_count == 2             # 多文件累计准确
+        # start_new_scan 重置（测试点9）：新一轮扫描计数归零，只统计本轮
+        dedup.start_new_scan()
+        assert dedup.heic_decode_fail_count == 0
+        # 大小写变体后缀归一（测试点15）：.HEIC/.Heic 均按 HEIC 计数
+        for suffix in (".HEIC", ".Heic"):
+            p = tmp_path / f"case{suffix}"
+            p.write_bytes(b"bad")
+            assert dedup.compute_image_hash(p) is None
+            p.unlink()
+        assert dedup.heic_decode_fail_count == 2
 
     def test_heic_full_scan_recalc_no_reuse(self, monkeypatch, tmp_path):
         """步骤3：全量扫描每次重算 HEIC pHash——无哈希复用、无持久化缓存逻辑。"""
