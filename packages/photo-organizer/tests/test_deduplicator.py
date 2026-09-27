@@ -483,3 +483,37 @@ class TestStepKeywordAlignment:
         for b in bads:
             assert dedup.compute_image_hash(b) is None      # 失败 HEIC pHash=None
         assert dedup.heic_decode_fail_count == 2            # 计数只含失败 = M
+
+
+# ── 步骤 3 完成标准机械对齐（-k heic_full_scan_recalc 真实可跑）──────────────
+
+class TestStep3KeywordAlignment:
+    """步骤 3（验证存量 HEIC 重算规则）的选择器对齐用例。"""
+
+    def test_heic_full_scan_recalc_no_reuse(self, monkeypatch, tmp_path):
+        """步骤3：全量扫描每次重算 HEIC pHash——无哈希复用、无持久化缓存逻辑。"""
+        pytest.importorskip("pillow_heif")  # 真实 HEIC 编解码；缺依赖 skip 并在 TEST_REPORT.md 区分记录
+        dedup_mod._heif_initialized = False
+        dedup_mod.initialize_heif()
+        img = Image.new('RGB', (80, 80), color='purple')
+        heic_path = tmp_path / "recalc.heic"
+        img.save(heic_path, format="HEIF")
+        dedup = Deduplicator()
+        call_count = 0
+        original = dedup.compute_image_hash
+
+        def wrapper(path):
+            nonlocal call_count
+            call_count += 1
+            return original(path)
+
+        monkeypatch.setattr(dedup, "compute_image_hash", wrapper)
+        dedup.start_new_scan()
+        dedup.add_photo(heic_path)   # 第 1 轮扫描：重算
+        dedup.start_new_scan()       # 新一轮扫描：内存哈希清空
+        dedup.add_photo(heic_path)   # 第 2 轮扫描：对同一文件再次重算（无复用）
+        assert call_count == 2
+        # 无持久化：两轮扫描后扫描根下除源文件外无任何缓存产物落盘
+        leftovers = [p.name for p in tmp_path.rglob("*")
+                     if p.is_file() and p != heic_path]
+        assert leftovers == []
