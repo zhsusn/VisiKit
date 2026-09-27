@@ -517,3 +517,42 @@ class TestStep3KeywordAlignment:
         leftovers = [p.name for p in tmp_path.rglob("*")
                      if p.is_file() and p != heic_path]
         assert leftovers == []
+
+
+# ── 步骤 4 完成标准机械对齐（-k heic_fail_report_render 真实可跑）────────────
+
+class TestStep4KeywordAlignment:
+    """步骤 4（重复报告失败计数标注）的选择器对齐用例。"""
+
+    def test_heic_fail_report_render_zero_hidden_positive_shown(self, tmp_path, monkeypatch, capsys):
+        """步骤4：重复报告（CLI 终端汇总 + 整理明细.md 去重区块）计数 0 隐藏 / >0 显示且数值一致。"""
+        _mock_heif_init(monkeypatch)
+        # >0：CLI 汇总显示失败数，与计数器完全一致
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "bad.heic").write_bytes(b"bad")
+        _run_dedup_command(src)
+        out = capsys.readouterr().out
+        assert "HEIC解码失败: 1" in out
+        assert Deduplicator.heic_decode_fail_count == 1
+        # =0：无 HEIC 文件的扫描，CLI 汇总无任何 HEIC 解码失败标注项
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        Image.new('RGB', (10, 10), color='red').save(plain / "a.jpg", format="JPEG")
+        _run_dedup_command(plain)
+        assert "HEIC解码失败" not in capsys.readouterr().out
+        # 整理明细.md 同规则：>0 显示且数值一致
+        monkeypatch.setattr(Deduplicator, "heic_decode_fail_count", 4)
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        PhotoOrganizer(output_dir=out_dir)._generate_detail_report(
+            OrganizeResult(success=[], skipped=[], failed=[]))
+        text = (out_dir / "整理明细.md").read_text(encoding="utf-8")
+        assert "HEIC解码失败: 4" in text
+        # =0：明细无 HEIC 解码失败标注
+        out_dir2 = tmp_path / "out2"
+        out_dir2.mkdir()
+        monkeypatch.setattr(Deduplicator, "heic_decode_fail_count", 0)
+        PhotoOrganizer(output_dir=out_dir2)._generate_detail_report(
+            OrganizeResult(success=[], skipped=[], failed=[]))
+        assert "HEIC解码失败" not in (out_dir2 / "整理明细.md").read_text(encoding="utf-8")
