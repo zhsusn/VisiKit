@@ -8,6 +8,13 @@ tqdm>=4.66.0
 # GUI (optional)
 ttkbootstrap>=1.10.0
 
+# Optional HEIC support
+# pillow-heif is NOT installed by `pip install -r requirements.txt`.
+# Install it explicitly when HEIC perceptual hashing is needed:
+#   pip install -r requirements-optional.txt
+# When it is missing or fails to initialize, scanning does not stop and
+# HEIC files automatically degrade to exact-hash-only matching.
+
 # Dev dependencies
 pytest>=7.0
 black
