@@ -12,6 +12,7 @@ import json
 
 from .scanner import PhotoInfo
 from .classifier import PhotoCategory
+from .deduplicator import Deduplicator, render_heic_fail_note
 
 
 class OrganizeMode(Enum):
@@ -301,7 +302,11 @@ class PhotoOrganizer:
     def _generate_detail_report(self, result: OrganizeResult):
         """生成整理明细 Markdown 文件"""
         report_path = self.output_dir / "整理明细.md"
-        
+
+        # 去重区块：HEIC 解码失败计数 > 0 时显示标注行，否则整个区块隐藏
+        heic_notes = render_heic_fail_note(Deduplicator.heic_decode_fail_count)
+        dedup_block = ["## 去重信息", "", *heic_notes, ""] if heic_notes else []
+
         lines = [
             "# 照片整理明细",
             "",
@@ -315,6 +320,7 @@ class PhotoOrganizer:
             f"- 跳过: {len(result.skipped)} 张",
             f"- 失败: {len(result.failed)} 张",
             "",
+            *dedup_block,
             "## 文件映射列表",
             "",
             "| 序号 | 整理前路径 | 整理后路径 | 操作类型 |",

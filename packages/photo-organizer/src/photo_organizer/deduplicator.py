@@ -230,3 +230,15 @@ class Deduplicator:
                 for g in exact_groups + similar_groups
             )
         }
+
+
+def render_heic_fail_note(fail_count: int) -> list[str]:
+    """重复报告汇总区 HEIC 解码失败标注渲染。
+
+    仅当失败计数 > 0 时返回标注行（供 CLI 终端汇总与整理明细.md 去重区块
+    共用）；计数为 0（无 HEIC 文件或全部解码成功）时返回空列表，即隐藏
+    标注项，保持报告简洁。
+    """
+    if fail_count <= 0:
+        return []
+    return [f"HEIC解码失败: {fail_count} 张（已降级为仅精确哈希参与去重）"]

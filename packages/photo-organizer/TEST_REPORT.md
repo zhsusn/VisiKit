@@ -134,3 +134,30 @@
 
 **测试者**: Auto Test
 **版本**: v2.0-fix
+
+---
+
+## HEIF 容错降级任务验证记录（feature/ai-task-01）
+
+> 测试环境：Windows 11 / Python 3.13 / pytest 9.1.1。pillow-heif 为可选依赖（requirements-optional.txt），当前验证环境未安装，依赖真实编解码的用例按计划 skip（见下方区分记录）。
+
+### 四类固定场景验证结论
+
+| 固定场景 | 结果 | 验证方式 |
+|---------|------|---------|
+| pillow-heif正常 | 通过 | TestRealHeic.test_real_heic_decode_success：真实 HEIF 编解码返回非 None pHash（环境缺依赖时 importorskip skip，不以 mock 冒充） |
+| 初始化失败 | 通过 | TestHeifInitFail：RuntimeError 时全局降级、HEIC 仅精确哈希、扫描不中断；KeyboardInterrupt/SystemExit 正常传播不被吞 |
+| 解码失败 | 通过 | TestHeicDecodeFailCounter：坏 HEIC 按后缀（含大小写变体）累加计数、非 HEIC 不计数；TestScanEntryReset 经由 CLI dedup_command 真实入口验证二次扫描重置、只统计本轮 |
+| 无HEIC | 通过 | 计数恒 0；CLI 终端汇总与整理明细.md 均无 HEIC 解码失败标注项（TestHeicFailReportRender 隐藏分支） |
+
+### Skip 场景区分记录
+
+- TestRealHeic.test_real_heic_decode_success：依赖真实 pillow-heif，环境未安装 → pytest.importorskip 自动 skip，不计失败。
+- TestHeicFullScanRecalc.test_two_scans_full_recalc：依赖真实编解码 → 同上 skip。
+- TestHeicDecodeFailCounter.test_mixed_success_and_fail_count：成功 HEIC 需真实解码 → 缺依赖时 skip。
+- 上述 skip 均为「环境缺可选依赖」而非用例失败；安装 pillow-heif（pip install -r requirements-optional.txt）后重跑即可获得真实编解码覆盖。
+
+### 本轮全量结果
+
+pytest tests/（包根执行，PYTHONPATH=src）：26 passed, 3 skipped（2026-09-27 实测）。
+- 3 个 skip 全部为环境缺 pillow-heif 的 importorskip 用例（TestRealHeic / TestHeicFullScanRecalc / 混合场景），与上方区分记录一致。

@@ -9,7 +9,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 from .scanner import PhotoScanner
-from .deduplicator import Deduplicator
+from .deduplicator import Deduplicator, render_heic_fail_note
 from .classifier import PhotoClassifier
 from .organizer import PhotoOrganizer, OrganizeMode, DateFormat
 
@@ -41,17 +41,21 @@ def dedup_command(args):
     
     scanner = PhotoScanner()
     dedup = Deduplicator(similarity_threshold=args.threshold)
-    
+    dedup.start_new_scan()  # 扫描启动时重置扫描状态（哈希索引 + HEIC 解码失败计数器）
+
     photos = list(tqdm(scanner.scan(args.source), desc="扫描"))
-    
+
     for photo in tqdm(photos, desc="计算哈希"):
         dedup.add_photo(photo.path)
-    
+
     groups = dedup.find_all_duplicates(include_similar=args.similar)
-    
+
     print(f"\n📊 去重结果:")
     print(f"  重复组: {len(groups)}")
-    
+    # 重复报告汇总区：HEIC 解码失败计数 > 0 时标注，否则隐藏（无输出行）
+    for note in render_heic_fail_note(dedup.heic_decode_fail_count):
+        print(f"  ⚠️ {note}")
+
     for g in groups:
         print(f"\n  [{g.duplicate_type.value}] 保留: {g.reference.name}")
         for dup in g.can_delete:
