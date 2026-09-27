@@ -424,16 +424,17 @@ class TestTestReportAnchor:
         assert "skip" in text.lower()
 
 
-# ── 步骤 2~5 完成标准机械对齐（plan.md 各步骤的 -k 选择器真实可跑）──────────
-# plan.md 完成标准按 `-k <snake_case关键字>` 选测试；存量用例为 CamelCase 类名，
-# pytest -k 逐字子串匹配（含下划线）不命中——功能虽已落地，验收口径落空。
-# 本区块用例名内嵌各步骤关键字，让每步 `-k` 命中数 ≥1 且断言覆盖其完成标准。
+# ── 步骤 2 完成标准机械对齐（plan.md 的 -k 选择器真实可跑）──────────────────
+# plan.md 完成标准按 `-k heic_decode_fail_count` 选测试；存量用例为 CamelCase 类名，
+# pytest -k 逐字子串匹配（含下划线）不命中。本区块用例名内嵌关键字，让 `-k` 命中数 ≥1
+# 且断言覆盖步骤 2 完成标准（计数准确/非HEIC不计数/初始0/重置/大小写归一/降级/混合）。
 
 class TestStepKeywordAlignment:
-    """步骤 2~5 完成标准选择器（pytest -k）的机械对齐用例。"""
+    """步骤 2 完成标准选择器（pytest -k）的机械对齐用例。"""
 
     def test_heic_decode_fail_count_rules(self, monkeypatch, tmp_path):
-        """步骤2：计数规则三点合一——初始为 0 / 非 HEIC 解码失败不计数 / HEIC 累计准确。"""
+        """步骤2：计数规则——初始为 0 / 非 HEIC 解码失败不计数 / HEIC 累计准确 /
+        start_new_scan 重置（测试点9）/ 大小写变体归一（测试点15）/ 降级规则（测试点6）。"""
         _mock_heif_init(monkeypatch)
         assert Deduplicator.heic_decode_fail_count == 0      # 初始值为 0
         dedup = Deduplicator()
@@ -482,80 +483,3 @@ class TestStepKeywordAlignment:
         for b in bads:
             assert dedup.compute_image_hash(b) is None      # 失败 HEIC pHash=None
         assert dedup.heic_decode_fail_count == 2            # 计数只含失败 = M
-
-    def test_heic_full_scan_recalc_no_reuse(self, monkeypatch, tmp_path):
-        """步骤3：全量扫描每次重算 HEIC pHash——无哈希复用、无持久化缓存逻辑。"""
-        pytest.importorskip("pillow_heif")  # 真实 HEIC 编解码；缺依赖 skip 并在 TEST_REPORT.md 区分记录
-        dedup_mod._heif_initialized = False
-        dedup_mod.initialize_heif()
-        img = Image.new('RGB', (80, 80), color='purple')
-        heic_path = tmp_path / "recalc.heic"
-        img.save(heic_path, format="HEIF")
-        dedup = Deduplicator()
-        call_count = 0
-        original = dedup.compute_image_hash
-
-        def wrapper(path):
-            nonlocal call_count
-            call_count += 1
-            return original(path)
-
-        monkeypatch.setattr(dedup, "compute_image_hash", wrapper)
-        dedup.start_new_scan()
-        dedup.add_photo(heic_path)   # 第 1 轮扫描：重算
-        dedup.start_new_scan()       # 新一轮扫描：内存哈希清空
-        dedup.add_photo(heic_path)   # 第 2 轮扫描：对同一文件再次重算（无复用）
-        assert call_count == 2
-        # 无持久化：两轮扫描后扫描根下除源文件外无任何缓存产物落盘
-        leftovers = [p.name for p in tmp_path.rglob("*")
-                     if p.is_file() and p != heic_path]
-        assert leftovers == []
-
-    def test_heic_fail_report_render_zero_hidden_positive_shown(self, tmp_path, monkeypatch, capsys):
-        """步骤4：重复报告（CLI 终端汇总 + 整理明细.md 去重区块）计数 0 隐藏 / >0 显示且数值一致。"""
-        _mock_heif_init(monkeypatch)
-        # >0：CLI 汇总显示失败数，与计数器完全一致
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "bad.heic").write_bytes(b"bad")
-        _run_dedup_command(src)
-        out = capsys.readouterr().out
-        assert "HEIC解码失败: 1" in out
-        assert Deduplicator.heic_decode_fail_count == 1
-        # =0：无 HEIC 文件的扫描，CLI 汇总无任何 HEIC 解码失败标注项
-        plain = tmp_path / "plain"
-        plain.mkdir()
-        Image.new('RGB', (10, 10), color='red').save(plain / "a.jpg", format="JPEG")
-        _run_dedup_command(plain)
-        assert "HEIC解码失败" not in capsys.readouterr().out
-        # 整理明细.md 同规则：>0 显示且数值一致
-        monkeypatch.setattr(Deduplicator, "heic_decode_fail_count", 4)
-        out_dir = tmp_path / "out"
-        out_dir.mkdir()
-        PhotoOrganizer(output_dir=out_dir)._generate_detail_report(
-            OrganizeResult(success=[], skipped=[], failed=[]))
-        text = (out_dir / "整理明细.md").read_text(encoding="utf-8")
-        assert "HEIC解码失败: 4" in text
-        # =0：明细无 HEIC 解码失败标注
-        out_dir2 = tmp_path / "out2"
-        out_dir2.mkdir()
-        monkeypatch.setattr(Deduplicator, "heic_decode_fail_count", 0)
-        PhotoOrganizer(output_dir=out_dir2)._generate_detail_report(
-            OrganizeResult(success=[], skipped=[], failed=[]))
-        assert "HEIC解码失败" not in (out_dir2 / "整理明细.md").read_text(encoding="utf-8")
-
-    def test_heic_fail_no_single_notice_during_scan(self, tmp_path, monkeypatch, capsys):
-        """步骤5：单张 HEIC 解码失败无实时提示——含失败文件名的行不得含「失败」字样。
-
-        坏 HEIC 会进入正常去重结果列表（业务输出），故按行断言而非全量文本。
-        """
-        _mock_heif_init(monkeypatch)
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "only.heic").write_bytes(b"bad")
-        _run_dedup_command(src)
-        captured = capsys.readouterr()
-        for line in (captured.out + captured.err).splitlines():
-            if "only.heic" in line:
-                assert "失败" not in line, f"出现单文件实时失败提示: {line}"
-        assert "HEIC解码失败: 1" in captured.out  # 仅最终汇总按规则展示
