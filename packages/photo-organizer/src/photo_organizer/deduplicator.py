@@ -25,7 +25,8 @@ _heif_initialized: bool = False
 def initialize_heif() -> None:
     """初始化 HEIF 支持（注册 pillow-heif opener）。
 
-    依赖缺失或初始化抛出非中断类异常时标记全局降级，扫描不中断；
+    进程内仅初始化一次，初始化失败（含依赖缺失、注册抛出非中断类异常）后
+    永久标记全局降级，不会重试；扫描不中断，HEIC自动降级为仅精确哈希。
     KeyboardInterrupt/SystemExit 等中断类异常不在此捕获，继续向外抛出。
     """
     global heif_degraded, _heif_initialized
@@ -68,6 +69,9 @@ class DuplicateGroup:
 class Deduplicator:
     """照片去重器"""
 
+    # 类级HEIC解码失败计数器（单线程环境，每次扫描启动时重置）
+    heic_decode_fail_count: int = 0
+
     def __init__(self, hash_size: int = 8, similarity_threshold: int = 5):
         """
         Args:
@@ -80,6 +84,12 @@ class Deduplicator:
         # 存储哈希 -> 文件列表
         self.exact_hashes: dict[str, list[Path]] = defaultdict(list)
         self.image_hashes: dict[str, list[Path]] = defaultdict(list)
+
+    def start_new_scan(self) -> None:
+        """启动新扫描，重置所有扫描状态（哈希索引、HEIC解码失败计数器）"""
+        self.exact_hashes.clear()
+        self.image_hashes.clear()
+        Deduplicator.heic_decode_fail_count = 0
 
     def compute_file_hash(self, file_path: Path) -> str:
         """计算文件MD5哈希（精确匹配）"""
@@ -99,6 +109,9 @@ class Deduplicator:
                 # 使用pHash（感知哈希），对缩放/压缩鲁棒
                 return str(imagehash.phash(img, hash_size=self.hash_size))
         except Exception:
+            # 仅HEIC格式（后缀小写归一）解码失败时累加类级计数器
+            if file_path.suffix.lower() == ".heic":
+                Deduplicator.heic_decode_fail_count += 1
             return None
 
     def add_photo(self, photo_path: Path) -> None:
