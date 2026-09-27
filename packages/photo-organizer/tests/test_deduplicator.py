@@ -459,6 +459,29 @@ class TestStepKeywordAlignment:
             assert dedup.compute_image_hash(p) is None
             p.unlink()
         assert dedup.heic_decode_fail_count == 2
+        # 降级规则（测试点6）：解码失败时 pHash 返回 None，精确哈希仍正常计算
+        bad_heic3 = tmp_path / "bad3.heic"
+        bad_heic3.write_bytes(b"bad")
+        assert dedup.compute_image_hash(bad_heic3) is None
+        assert dedup.compute_file_hash(bad_heic3) is not None
+        assert dedup.heic_decode_fail_count == 3
+
+    def test_heic_decode_fail_count_mixed_scan(self, monkeypatch, tmp_path):
+        """步骤2（测试点7）：N 成功 + M 失败混合扫描——计数=M、成功 HEIC pHash 正常返回。"""
+        pytest.importorskip("pillow_heif")  # 成功 HEIC 需真实编解码；缺依赖 skip 并在 TEST_REPORT.md 区分记录
+        dedup_mod._heif_initialized = False
+        dedup_mod.initialize_heif()
+        img = Image.new('RGB', (60, 60), color='orange')
+        good = tmp_path / "good.heic"
+        img.save(good, format="HEIF")
+        bads = [tmp_path / f"bad{i}.heic" for i in range(2)]
+        for b in bads:
+            b.write_bytes(b"bad")
+        dedup = Deduplicator()
+        assert dedup.compute_image_hash(good) is not None   # 成功 HEIC pHash 正常
+        for b in bads:
+            assert dedup.compute_image_hash(b) is None      # 失败 HEIC pHash=None
+        assert dedup.heic_decode_fail_count == 2            # 计数只含失败 = M
 
     def test_heic_full_scan_recalc_no_reuse(self, monkeypatch, tmp_path):
         """步骤3：全量扫描每次重算 HEIC pHash——无哈希复用、无持久化缓存逻辑。"""
